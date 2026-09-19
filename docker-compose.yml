@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: worthsnap
+      POSTGRES_USER: worthsnap
+      POSTGRES_PASSWORD: worthsnap
+    ports:
+      - "5432:5432"
+    volumes:
+      - worthsnap_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U worthsnap"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  worthsnap_pgdata:
