@@ -17,3 +17,4 @@ backend/.mvn/wrapper/maven-wrapper.jar
 # Env
 .env
 .env.local
+backend/secrets.properties

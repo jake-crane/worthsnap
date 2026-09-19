@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 public interface LineItemRepository extends JpaRepository<LineItem, Long> {
     List<LineItem> findBySnapshotId(Long snapshotId);
 
-    @Query("select distinct l.description from LineItem l order by l.description asc")
-    List<String> findDistinctDescriptions();
+    @Query(
+            "select distinct l.description from LineItem l where l.snapshot.userId = :userId order by l.description asc")
+    List<String> findDistinctDescriptionsByUserId(Long userId);
 }

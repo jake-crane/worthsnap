@@ -33,43 +33,43 @@ public class SnapshotService {
     }
 
     @Transactional(readOnly = true)
-    public List<SnapshotSummaryDto> listSummaries() {
-        return snapshotRepository.findAllByOrderBySnapshotDateAsc().stream()
+    public List<SnapshotSummaryDto> listSummaries(Long userId) {
+        return snapshotRepository.findAllByUserIdOrderBySnapshotDateAsc(userId).stream()
                 .map(s -> new SnapshotSummaryDto(
                         s.getId(), s.getSnapshotDate(), s.getNotes(), netWorthOf(s.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<NetWorthPointDto> netWorthHistory() {
-        return snapshotRepository.findAllByOrderBySnapshotDateAsc().stream()
+    public List<NetWorthPointDto> netWorthHistory(Long userId) {
+        return snapshotRepository.findAllByUserIdOrderBySnapshotDateAsc(userId).stream()
                 .map(s -> new NetWorthPointDto(s.getId(), s.getSnapshotDate(), netWorthOf(s.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<String> listDescriptions() {
-        return lineItemRepository.findDistinctDescriptions();
+    public List<String> listDescriptions(Long userId) {
+        return lineItemRepository.findDistinctDescriptionsByUserId(userId);
     }
 
     @Transactional(readOnly = true)
-    public SnapshotDetailDto getDetail(Long id) {
+    public SnapshotDetailDto getDetail(Long userId, Long id) {
         Snapshot snapshot = snapshotRepository
-                .findById(id)
+                .findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Snapshot not found"));
-        return toDetailDto(snapshot);
+        return toDetailDto(userId, snapshot);
     }
 
     @Transactional
-    public void delete(Long id) {
-        if (!snapshotRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Snapshot not found");
-        }
-        snapshotRepository.deleteById(id);
+    public void delete(Long userId, Long id) {
+        Snapshot snapshot = snapshotRepository
+                .findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Snapshot not found"));
+        snapshotRepository.delete(snapshot);
     }
 
     @Transactional
-    public SnapshotDetailDto create(CreateSnapshotRequest request) {
+    public SnapshotDetailDto create(Long userId, CreateSnapshotRequest request) {
         Set<String> seenDescriptions = new HashSet<>();
         for (var lineItemRequest : request.lineItems()) {
             String key = lineItemRequest.description().trim().toLowerCase();
@@ -81,6 +81,7 @@ public class SnapshotService {
         }
 
         Snapshot snapshot = new Snapshot();
+        snapshot.setUserId(userId);
         snapshot.setSnapshotDate(request.snapshotDate());
         snapshot.setNotes(request.notes());
         snapshot = snapshotRepository.save(snapshot);
@@ -93,16 +94,15 @@ public class SnapshotService {
             lineItemRepository.save(lineItem);
         }
 
-        return toDetailDto(snapshot);
+        return toDetailDto(userId, snapshot);
     }
 
-    private SnapshotDetailDto toDetailDto(Snapshot snapshot) {
+    private SnapshotDetailDto toDetailDto(Long userId, Snapshot snapshot) {
         List<LineItem> lineItems = lineItemRepository.findBySnapshotId(snapshot.getId());
 
-        Snapshot previousSnapshot =
-                snapshotRepository
-                        .findFirstBySnapshotDateLessThanOrderBySnapshotDateDesc(snapshot.getSnapshotDate())
-                        .orElse(null);
+        Snapshot previousSnapshot = snapshotRepository
+                .findFirstByUserIdAndSnapshotDateLessThanOrderBySnapshotDateDesc(userId, snapshot.getSnapshotDate())
+                .orElse(null);
         Map<String, BigDecimal> previousAmountsByDescription = previousSnapshot == null
                 ? Map.of()
                 : lineItemRepository.findBySnapshotId(previousSnapshot.getId()).stream()

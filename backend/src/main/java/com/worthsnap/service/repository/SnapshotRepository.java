@@ -7,7 +7,10 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SnapshotRepository extends JpaRepository<Snapshot, Long> {
-    List<Snapshot> findAllByOrderBySnapshotDateAsc();
+    List<Snapshot> findAllByUserIdOrderBySnapshotDateAsc(Long userId);
 
-    Optional<Snapshot> findFirstBySnapshotDateLessThanOrderBySnapshotDateDesc(LocalDateTime snapshotDate);
+    Optional<Snapshot> findByIdAndUserId(Long id, Long userId);
+
+    Optional<Snapshot> findFirstByUserIdAndSnapshotDateLessThanOrderBySnapshotDateDesc(
+            Long userId, LocalDateTime snapshotDate);
 }
