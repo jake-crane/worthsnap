@@ -161,12 +161,21 @@ export default function NewSnapshot() {
           Use a negative amount for liabilities, e.g. a credit card balance.
         </p>
         <ul className="divide-y divide-slate-100">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const usedByOtherRows = new Set(
+              rows
+                .filter((r) => r.key !== row.key && r.description.trim() !== '')
+                .map((r) => r.description.trim().toLowerCase()),
+            )
+            const availableDescriptions = descriptions.filter(
+              (d) => !usedByOtherRows.has(d.trim().toLowerCase()),
+            )
+            return (
             <li key={row.key} className="flex items-center gap-3 px-4 py-3">
               <DescriptionCombobox
                 value={row.description}
                 onChange={(value) => updateRow(row.key, 'description', value)}
-                options={descriptions}
+                options={availableDescriptions}
                 placeholder="e.g. Chase Checking"
                 className="flex-1"
                 error={duplicateKeys.has(row.key)}
@@ -188,7 +197,8 @@ export default function NewSnapshot() {
                 ✕
               </button>
             </li>
-          ))}
+            )
+          })}
         </ul>
         <div className="rounded-b-lg border-t border-slate-100 px-4 py-3">
           <button
