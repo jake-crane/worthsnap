@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Item, SnapshotDetail, SnapshotSummary } from '../types'
+import type { Category, CategoryType, Item, SnapshotDetail, SnapshotSummary } from '../types'
+
+const NEW_CATEGORY = '__new__'
 
 export default function NewSnapshot() {
   const navigate = useNavigate()
-  const [items, setItems] = useState<Item[] | null>(null)
+  const [categories, setCategories] = useState<Category[] | null>(null)
+  const [snapshotItems, setSnapshotItems] = useState<Item[] | null>(null)
   const [values, setValues] = useState<Record<number, string>>({})
   const [snapshotDate, setSnapshotDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -14,35 +17,86 @@ export default function NewSnapshot() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const [newAccountName, setNewAccountName] = useState('')
+  const [newAccountValue, setNewAccountValue] = useState('')
+  const [newAccountCategoryId, setNewAccountCategoryId] = useState<string>('')
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryType, setNewCategoryType] = useState<CategoryType>('ASSET')
+  const [addingAccount, setAddingAccount] = useState(false)
+
   useEffect(() => {
     async function load() {
-      const allItems = await api.get<Item[]>('/items')
-      const active = allItems.filter((i) => !i.archived)
-      setItems(active)
+      const [cats, allItems, summaries] = await Promise.all([
+        api.get<Category[]>('/categories'),
+        api.get<Item[]>('/items'),
+        api.get<SnapshotSummary[]>('/snapshots'),
+      ])
+      setCategories(cats)
+      setNewAccountCategoryId(cats.length > 0 ? String(cats[0].id) : NEW_CATEGORY)
 
-      const summaries = await api.get<SnapshotSummary[]>('/snapshots')
-      if (summaries.length > 0) {
-        const latest = summaries.reduce((a, b) =>
-          a.snapshotDate > b.snapshotDate ? a : b,
-        )
-        const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
-        const prefilled: Record<number, string> = {}
-        for (const entry of detail.entries) {
-          prefilled[entry.itemId] = String(entry.value)
-        }
-        setValues(prefilled)
+      const itemsById = new Map(allItems.map((i) => [i.id, i]))
+
+      if (summaries.length === 0) {
+        // No history yet: fall back to whatever active items already exist.
+        setSnapshotItems(allItems.filter((i) => !i.archived))
+        return
       }
+
+      const latest = summaries.reduce((a, b) =>
+        a.snapshotDate > b.snapshotDate ? a : b,
+      )
+      const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
+
+      const carriedOver: Item[] = []
+      for (const entry of detail.entries) {
+        const item = itemsById.get(entry.itemId)
+        if (!item || item.archived) continue
+        carriedOver.push(item)
+      }
+      setSnapshotItems(carriedOver)
     }
     load().catch((e) => setError(String(e)))
   }, [])
 
+  async function handleAddAccount(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newAccountName.trim() || !categories) return
+    try {
+      let categoryId: number
+      if (newAccountCategoryId === NEW_CATEGORY) {
+        if (!newCategoryName.trim()) return
+        const category = await api.post<Category>('/categories', {
+          name: newCategoryName,
+          type: newCategoryType,
+        })
+        setCategories((prev) => [...(prev ?? []), category])
+        categoryId = category.id
+      } else {
+        categoryId = Number(newAccountCategoryId)
+      }
+
+      const item = await api.post<Item>('/items', { name: newAccountName, categoryId })
+      setSnapshotItems((prev) => [...(prev ?? []), item])
+      if (newAccountValue !== '') {
+        setValues((v) => ({ ...v, [item.id]: newAccountValue }))
+      }
+
+      setNewAccountName('')
+      setNewAccountValue('')
+      setNewCategoryName('')
+      setAddingAccount(false)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!items) return
+    if (!snapshotItems) return
     setSubmitting(true)
     setError(null)
     try {
-      const entries = items
+      const entries = snapshotItems
         .filter((item) => values[item.id] !== undefined && values[item.id] !== '')
         .map((item) => ({ itemId: item.id, value: Number(values[item.id]) }))
 
@@ -59,10 +113,10 @@ export default function NewSnapshot() {
   }
 
   if (error) return <p className="text-red-600">{error}</p>
-  if (!items) return <p className="text-slate-500">Loading…</p>
+  if (!snapshotItems || !categories) return <p className="text-slate-500">Loading…</p>
 
-  const assets = items.filter((i) => i.type === 'ASSET')
-  const liabilities = items.filter((i) => i.type === 'LIABILITY')
+  const assets = snapshotItems.filter((i) => i.type === 'ASSET')
+  const liabilities = snapshotItems.filter((i) => i.type === 'LIABILITY')
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -91,9 +145,9 @@ export default function NewSnapshot() {
         </div>
       </div>
 
-      {items.length === 0 && (
+      {snapshotItems.length === 0 && (
         <p className="text-slate-500">
-          You don't have any items yet — add some on the Items page first.
+          No accounts carried over from a previous snapshot yet — add one below.
         </p>
       )}
 
@@ -134,9 +188,107 @@ export default function NewSnapshot() {
           ),
       )}
 
+      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
+        {!addingAccount ? (
+          <button
+            type="button"
+            onClick={() => setAddingAccount(true)}
+            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            + Add an account
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-500">Name</label>
+                <input
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder="e.g. Ally Savings"
+                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500">Category</label>
+                <select
+                  value={newAccountCategoryId}
+                  onChange={(e) => setNewAccountCategoryId(e.target.value)}
+                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.type})
+                    </option>
+                  ))}
+                  <option value={NEW_CATEGORY}>+ New category…</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500">
+                  Value (optional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newAccountValue}
+                  onChange={(e) => setNewAccountValue(e.target.value)}
+                  placeholder="0.00"
+                  className="mt-1 w-36 rounded-md border border-slate-300 px-3 py-2 text-right text-sm"
+                />
+              </div>
+            </div>
+
+            {newAccountCategoryId === NEW_CATEGORY && (
+              <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500">
+                    New category name
+                  </label>
+                  <input
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g. Crypto"
+                    className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500">Type</label>
+                  <select
+                    value={newCategoryType}
+                    onChange={(e) => setNewCategoryType(e.target.value as CategoryType)}
+                    className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="ASSET">Asset</option>
+                    <option value="LIABILITY">Liability</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleAddAccount}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                Add account
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddingAccount(false)}
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <button
         type="submit"
-        disabled={submitting || items.length === 0}
+        disabled={submitting || snapshotItems.length === 0}
         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
       >
         {submitting ? 'Saving…' : 'Save snapshot'}
