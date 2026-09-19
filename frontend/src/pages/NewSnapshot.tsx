@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import DescriptionCombobox from '../components/DescriptionCombobox'
 import type { SnapshotDetail, SnapshotSummary } from '../types'
 
 interface Row {
@@ -29,6 +30,7 @@ export default function NewSnapshot() {
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [duplicateKeys, setDuplicateKeys] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -58,14 +60,17 @@ export default function NewSnapshot() {
 
   function updateRow(key: number, field: 'description' | 'amount', value: string) {
     setRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)))
+    setDuplicateKeys(new Set())
   }
 
   function addRow() {
     setRows((prev) => [...(prev ?? []), newRow()])
+    setDuplicateKeys(new Set())
   }
 
   function removeRow(key: number) {
     setRows((prev) => prev && prev.filter((r) => r.key !== key))
+    setDuplicateKeys(new Set())
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -73,14 +78,34 @@ export default function NewSnapshot() {
     if (!rows) return
     setError(null)
 
-    const lineItems = rows
-      .filter((r) => r.description.trim() !== '' && r.amount !== '')
-      .map((r) => ({ description: r.description.trim(), amount: Number(r.amount) }))
+    const validRows = rows.filter((r) => r.description.trim() !== '' && r.amount !== '')
+    const lineItems = validRows.map((r) => ({
+      description: r.description.trim(),
+      amount: Number(r.amount),
+    }))
 
     if (lineItems.length === 0) {
+      setDuplicateKeys(new Set())
       setError('Add at least one line item with a description and amount.')
       return
     }
+
+    const countByDescription = new Map<string, number>()
+    for (const r of validRows) {
+      const key = r.description.trim().toLowerCase()
+      countByDescription.set(key, (countByDescription.get(key) ?? 0) + 1)
+    }
+    const dupKeys = new Set(
+      validRows
+        .filter((r) => (countByDescription.get(r.description.trim().toLowerCase()) ?? 0) > 1)
+        .map((r) => r.key),
+    )
+    if (dupKeys.size > 0) {
+      setDuplicateKeys(dupKeys)
+      setError('Each line item must have a unique description.')
+      return
+    }
+    setDuplicateKeys(new Set())
 
     setSubmitting(true)
     try {
@@ -128,14 +153,8 @@ export default function NewSnapshot() {
         </div>
       </div>
 
-      <datalist id="description-suggestions">
-        {descriptions.map((d) => (
-          <option key={d} value={d} />
-        ))}
-      </datalist>
-
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-3 font-medium text-slate-900">
+      <div className="rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-t-lg border-b border-slate-100 px-4 py-3 font-medium text-slate-900">
           Line items
         </div>
         <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500">
@@ -144,12 +163,13 @@ export default function NewSnapshot() {
         <ul className="divide-y divide-slate-100">
           {rows.map((row) => (
             <li key={row.key} className="flex items-center gap-3 px-4 py-3">
-              <input
+              <DescriptionCombobox
                 value={row.description}
-                onChange={(e) => updateRow(row.key, 'description', e.target.value)}
-                list="description-suggestions"
+                onChange={(value) => updateRow(row.key, 'description', value)}
+                options={descriptions}
                 placeholder="e.g. Chase Checking"
-                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="flex-1"
+                error={duplicateKeys.has(row.key)}
               />
               <input
                 type="number"
@@ -170,7 +190,7 @@ export default function NewSnapshot() {
             </li>
           ))}
         </ul>
-        <div className="border-t border-slate-100 px-4 py-3">
+        <div className="rounded-b-lg border-t border-slate-100 px-4 py-3">
           <button
             type="button"
             onClick={addRow}

@@ -12,8 +12,10 @@ import com.worthsnap.service.repository.SnapshotRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -68,6 +70,16 @@ public class SnapshotService {
 
     @Transactional
     public SnapshotDetailDto create(CreateSnapshotRequest request) {
+        Set<String> seenDescriptions = new HashSet<>();
+        for (var lineItemRequest : request.lineItems()) {
+            String key = lineItemRequest.description().trim().toLowerCase();
+            if (!seenDescriptions.add(key)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Duplicate line item description: " + lineItemRequest.description());
+            }
+        }
+
         Snapshot snapshot = new Snapshot();
         snapshot.setSnapshotDate(request.snapshotDate());
         snapshot.setNotes(request.notes());
