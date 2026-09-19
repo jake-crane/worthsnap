@@ -36,8 +36,19 @@ public class SnapshotController {
         return snapshotService.getDetail(id);
     }
 
+    @DeleteMapping("/snapshots/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        snapshotService.delete(id);
+    }
+
     @GetMapping("/net-worth-history")
     public List<NetWorthPointDto> netWorthHistory() {
         return snapshotService.netWorthHistory();
+    }
+
+    @GetMapping("/descriptions")
+    public List<String> descriptions() {
+        return snapshotService.listDescriptions();
     }
 }

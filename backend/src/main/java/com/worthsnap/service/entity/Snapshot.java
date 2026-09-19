@@ -2,7 +2,7 @@ package com.worthsnap.service.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,8 +18,8 @@ public class Snapshot {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "snapshot_date", nullable = false, unique = true)
-    private LocalDate snapshotDate;
+    @Column(name = "snapshot_date", nullable = false)
+    private LocalDateTime snapshotDate;
 
     private String notes;
 

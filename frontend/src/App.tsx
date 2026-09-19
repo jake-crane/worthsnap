@@ -3,7 +3,6 @@ import Dashboard from './pages/Dashboard'
 import Snapshots from './pages/Snapshots'
 import NewSnapshot from './pages/NewSnapshot'
 import SnapshotDetail from './pages/SnapshotDetail'
-import Items from './pages/Items'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -25,9 +24,6 @@ export default function App() {
             <NavLink to="/snapshots" className={navLinkClass}>
               Snapshots
             </NavLink>
-            <NavLink to="/items" className={navLinkClass}>
-              Items
-            </NavLink>
           </nav>
         </div>
       </header>
@@ -38,7 +34,6 @@ export default function App() {
           <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/snapshots/new" element={<NewSnapshot />} />
           <Route path="/snapshots/:id" element={<SnapshotDetail />} />
-          <Route path="/items" element={<Items />} />
         </Routes>
       </main>
     </div>

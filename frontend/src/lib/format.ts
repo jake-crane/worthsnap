@@ -10,12 +10,24 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 })
 
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
 export function formatCurrency(value: number): string {
   return currencyFormatter.format(value)
 }
 
-export function formatDate(isoDate: string): string {
-  return dateFormatter.format(new Date(`${isoDate}T00:00:00`))
+export function formatDate(isoDateTime: string): string {
+  return dateFormatter.format(new Date(isoDateTime))
+}
+
+export function formatDateTime(isoDateTime: string): string {
+  return dateTimeFormatter.format(new Date(isoDateTime))
 }
 
 export function formatPercent(value: number | null): string {

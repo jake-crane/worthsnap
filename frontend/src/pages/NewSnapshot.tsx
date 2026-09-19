@@ -1,44 +1,45 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Category, CategoryType, Item, SnapshotDetail, SnapshotSummary } from '../types'
+import type { SnapshotDetail, SnapshotSummary } from '../types'
 
-const NEW_CATEGORY = '__new__'
+interface Row {
+  key: number
+  description: string
+  amount: string
+}
+
+let nextKey = 0
+function newRow(description = ''): Row {
+  return { key: nextKey++, description, amount: '' }
+}
+
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 export default function NewSnapshot() {
   const navigate = useNavigate()
-  const [categories, setCategories] = useState<Category[] | null>(null)
-  const [snapshotItems, setSnapshotItems] = useState<Item[] | null>(null)
-  const [values, setValues] = useState<Record<number, string>>({})
-  const [snapshotDate, setSnapshotDate] = useState(
-    new Date().toISOString().slice(0, 10),
+  const [rows, setRows] = useState<Row[] | null>(null)
+  const [descriptions, setDescriptions] = useState<string[]>([])
+  const [snapshotDate, setSnapshotDate] = useState(() =>
+    toDateTimeLocalValue(new Date()),
   )
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const [newAccountName, setNewAccountName] = useState('')
-  const [newAccountValue, setNewAccountValue] = useState('')
-  const [newAccountCategoryId, setNewAccountCategoryId] = useState<string>('')
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [newCategoryType, setNewCategoryType] = useState<CategoryType>('ASSET')
-  const [addingAccount, setAddingAccount] = useState(false)
-
   useEffect(() => {
     async function load() {
-      const [cats, allItems, summaries] = await Promise.all([
-        api.get<Category[]>('/categories'),
-        api.get<Item[]>('/items'),
+      const [summaries, allDescriptions] = await Promise.all([
         api.get<SnapshotSummary[]>('/snapshots'),
+        api.get<string[]>('/descriptions'),
       ])
-      setCategories(cats)
-      setNewAccountCategoryId(cats.length > 0 ? String(cats[0].id) : NEW_CATEGORY)
-
-      const itemsById = new Map(allItems.map((i) => [i.id, i]))
+      setDescriptions(allDescriptions)
 
       if (summaries.length === 0) {
-        // No history yet: fall back to whatever active items already exist.
-        setSnapshotItems(allItems.filter((i) => !i.archived))
+        setRows([newRow()])
         return
       }
 
@@ -46,64 +47,47 @@ export default function NewSnapshot() {
         a.snapshotDate > b.snapshotDate ? a : b,
       )
       const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
-
-      const carriedOver: Item[] = []
-      for (const entry of detail.entries) {
-        const item = itemsById.get(entry.itemId)
-        if (!item || item.archived) continue
-        carriedOver.push(item)
-      }
-      setSnapshotItems(carriedOver)
+      setRows(
+        detail.lineItems.length > 0
+          ? detail.lineItems.map((li) => newRow(li.description))
+          : [newRow()],
+      )
     }
     load().catch((e) => setError(String(e)))
   }, [])
 
-  async function handleAddAccount(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newAccountName.trim() || !categories) return
-    try {
-      let categoryId: number
-      if (newAccountCategoryId === NEW_CATEGORY) {
-        if (!newCategoryName.trim()) return
-        const category = await api.post<Category>('/categories', {
-          name: newCategoryName,
-          type: newCategoryType,
-        })
-        setCategories((prev) => [...(prev ?? []), category])
-        categoryId = category.id
-      } else {
-        categoryId = Number(newAccountCategoryId)
-      }
+  function updateRow(key: number, field: 'description' | 'amount', value: string) {
+    setRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)))
+  }
 
-      const item = await api.post<Item>('/items', { name: newAccountName, categoryId })
-      setSnapshotItems((prev) => [...(prev ?? []), item])
-      if (newAccountValue !== '') {
-        setValues((v) => ({ ...v, [item.id]: newAccountValue }))
-      }
+  function addRow() {
+    setRows((prev) => [...(prev ?? []), newRow()])
+  }
 
-      setNewAccountName('')
-      setNewAccountValue('')
-      setNewCategoryName('')
-      setAddingAccount(false)
-    } catch (e) {
-      setError(String(e))
-    }
+  function removeRow(key: number) {
+    setRows((prev) => prev && prev.filter((r) => r.key !== key))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!snapshotItems) return
-    setSubmitting(true)
+    if (!rows) return
     setError(null)
-    try {
-      const entries = snapshotItems
-        .filter((item) => values[item.id] !== undefined && values[item.id] !== '')
-        .map((item) => ({ itemId: item.id, value: Number(values[item.id]) }))
 
+    const lineItems = rows
+      .filter((r) => r.description.trim() !== '' && r.amount !== '')
+      .map((r) => ({ description: r.description.trim(), amount: Number(r.amount) }))
+
+    if (lineItems.length === 0) {
+      setError('Add at least one line item with a description and amount.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
       const created = await api.post<{ id: number }>('/snapshots', {
         snapshotDate,
         notes: notes.trim() || null,
-        entries,
+        lineItems,
       })
       navigate(`/snapshots/${created.id}`)
     } catch (e) {
@@ -112,21 +96,20 @@ export default function NewSnapshot() {
     }
   }
 
-  if (error) return <p className="text-red-600">{error}</p>
-  if (!snapshotItems || !categories) return <p className="text-slate-500">Loading…</p>
-
-  const assets = snapshotItems.filter((i) => i.type === 'ASSET')
-  const liabilities = snapshotItems.filter((i) => i.type === 'LIABILITY')
+  if (!rows && error) return <p className="text-red-600">{error}</p>
+  if (!rows) return <p className="text-slate-500">Loading…</p>
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <h1 className="text-xl font-semibold text-slate-900">New snapshot</h1>
 
+      {error && <p className="text-red-600">{error}</p>}
+
       <div className="flex flex-wrap gap-4 rounded-lg border border-slate-200 bg-white p-4">
         <div>
-          <label className="block text-xs font-medium text-slate-500">Date</label>
+          <label className="block text-xs font-medium text-slate-500">Date &amp; time</label>
           <input
-            type="date"
+            type="datetime-local"
             value={snapshotDate}
             onChange={(e) => setSnapshotDate(e.target.value)}
             className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
@@ -145,150 +128,62 @@ export default function NewSnapshot() {
         </div>
       </div>
 
-      {snapshotItems.length === 0 && (
-        <p className="text-slate-500">
-          No accounts carried over from a previous snapshot yet — add one below.
+      <datalist id="description-suggestions">
+        {descriptions.map((d) => (
+          <option key={d} value={d} />
+        ))}
+      </datalist>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-3 font-medium text-slate-900">
+          Line items
+        </div>
+        <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500">
+          Use a negative amount for liabilities, e.g. a credit card balance.
         </p>
-      )}
-
-      {[
-        { title: 'Assets', list: assets },
-        { title: 'Liabilities', list: liabilities },
-      ].map(
-        (section) =>
-          section.list.length > 0 && (
-            <div
-              key={section.title}
-              className="overflow-hidden rounded-lg border border-slate-200 bg-white"
-            >
-              <div className="border-b border-slate-100 px-4 py-3 font-medium text-slate-900">
-                {section.title}
-              </div>
-              <ul className="divide-y divide-slate-100">
-                {section.list.map((item) => (
-                  <li key={item.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                    <div>
-                      <div className="text-slate-900">{item.name}</div>
-                      <div className="text-xs text-slate-500">{item.categoryName}</div>
-                    </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={values[item.id] ?? ''}
-                      onChange={(e) =>
-                        setValues((v) => ({ ...v, [item.id]: e.target.value }))
-                      }
-                      placeholder="0.00"
-                      className="w-36 rounded-md border border-slate-300 px-3 py-1.5 text-right text-sm"
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ),
-      )}
-
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
-        {!addingAccount ? (
+        <ul className="divide-y divide-slate-100">
+          {rows.map((row) => (
+            <li key={row.key} className="flex items-center gap-3 px-4 py-3">
+              <input
+                value={row.description}
+                onChange={(e) => updateRow(row.key, 'description', e.target.value)}
+                list="description-suggestions"
+                placeholder="e.g. Chase Checking"
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={row.amount}
+                onChange={(e) => updateRow(row.key, 'amount', e.target.value)}
+                placeholder="0.00"
+                className="w-36 rounded-md border border-slate-300 px-3 py-2 text-right text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => removeRow(row.key)}
+                className="text-xs font-medium text-slate-400 hover:text-rose-600"
+                aria-label="Remove line item"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="border-t border-slate-100 px-4 py-3">
           <button
             type="button"
-            onClick={() => setAddingAccount(true)}
+            onClick={addRow}
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
-            + Add an account
+            + Add line item
           </button>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-500">Name</label>
-                <input
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                  placeholder="e.g. Ally Savings"
-                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500">Category</label>
-                <select
-                  value={newAccountCategoryId}
-                  onChange={(e) => setNewAccountCategoryId(e.target.value)}
-                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.type})
-                    </option>
-                  ))}
-                  <option value={NEW_CATEGORY}>+ New category…</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500">
-                  Value (optional)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newAccountValue}
-                  onChange={(e) => setNewAccountValue(e.target.value)}
-                  placeholder="0.00"
-                  className="mt-1 w-36 rounded-md border border-slate-300 px-3 py-2 text-right text-sm"
-                />
-              </div>
-            </div>
-
-            {newAccountCategoryId === NEW_CATEGORY && (
-              <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">
-                    New category name
-                  </label>
-                  <input
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="e.g. Crypto"
-                    className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500">Type</label>
-                  <select
-                    value={newCategoryType}
-                    onChange={(e) => setNewCategoryType(e.target.value as CategoryType)}
-                    className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="ASSET">Asset</option>
-                    <option value="LIABILITY">Liability</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleAddAccount}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-              >
-                Add account
-              </button>
-              <button
-                type="button"
-                onClick={() => setAddingAccount(false)}
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
       <button
         type="submit"
-        disabled={submitting || snapshotItems.length === 0}
+        disabled={submitting}
         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
       >
         {submitting ? 'Saving…' : 'Save snapshot'}

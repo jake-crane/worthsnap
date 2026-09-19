@@ -7,11 +7,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "snapshot_entries")
+@Table(name = "line_items")
 @Getter
 @Setter
 @NoArgsConstructor
-public class SnapshotEntry {
+public class LineItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -21,10 +21,9 @@ public class SnapshotEntry {
     @JoinColumn(name = "snapshot_id", nullable = false)
     private Snapshot snapshot;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_id", nullable = false)
-    private Item item;
+    @Column(nullable = false)
+    private String description;
 
     @Column(nullable = false, precision = 14, scale = 2)
-    private BigDecimal value;
+    private BigDecimal amount;
 }

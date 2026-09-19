@@ -1,6 +1,6 @@
 package com.worthsnap.service.dto;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
-public record NetWorthPointDto(Long snapshotId, LocalDate snapshotDate, BigDecimal netWorth) {}
+public record NetWorthPointDto(Long snapshotId, LocalDateTime snapshotDate, BigDecimal netWorth) {}

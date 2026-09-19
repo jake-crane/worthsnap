@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api/client'
-import { formatCurrency, formatDate } from '../lib/format'
+import { formatCurrency, formatDate, formatDateTime } from '../lib/format'
 import type { NetWorthPoint } from '../types'
 
 function CustomTooltip({
@@ -24,7 +24,7 @@ function CustomTooltip({
   const point = payload[0].payload
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-md">
-      <div className="text-slate-500">{formatDate(point.snapshotDate)}</div>
+      <div className="text-slate-500">{formatDateTime(point.snapshotDate)}</div>
       <div className="font-semibold text-slate-900">
         {formatCurrency(point.netWorth)}
       </div>
@@ -82,7 +82,7 @@ export default function Dashboard() {
           {formatCurrency(latest.netWorth)}
         </div>
         <div className="mt-1 text-sm text-slate-500">
-          as of {formatDate(latest.snapshotDate)}
+          as of {formatDateTime(latest.snapshotDate)}
         </div>
       </div>
 

@@ -1,16 +1,13 @@
 package com.worthsnap.service.service;
 
 import com.worthsnap.service.dto.CreateSnapshotRequest;
+import com.worthsnap.service.dto.LineItemDetailDto;
 import com.worthsnap.service.dto.NetWorthPointDto;
 import com.worthsnap.service.dto.SnapshotDetailDto;
-import com.worthsnap.service.dto.SnapshotEntryDetailDto;
 import com.worthsnap.service.dto.SnapshotSummaryDto;
-import com.worthsnap.service.entity.CategoryType;
-import com.worthsnap.service.entity.Item;
+import com.worthsnap.service.entity.LineItem;
 import com.worthsnap.service.entity.Snapshot;
-import com.worthsnap.service.entity.SnapshotEntry;
-import com.worthsnap.service.repository.ItemRepository;
-import com.worthsnap.service.repository.SnapshotEntryRepository;
+import com.worthsnap.service.repository.LineItemRepository;
 import com.worthsnap.service.repository.SnapshotRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -26,16 +23,11 @@ import org.springframework.http.HttpStatus;
 public class SnapshotService {
 
     private final SnapshotRepository snapshotRepository;
-    private final SnapshotEntryRepository snapshotEntryRepository;
-    private final ItemRepository itemRepository;
+    private final LineItemRepository lineItemRepository;
 
-    public SnapshotService(
-            SnapshotRepository snapshotRepository,
-            SnapshotEntryRepository snapshotEntryRepository,
-            ItemRepository itemRepository) {
+    public SnapshotService(SnapshotRepository snapshotRepository, LineItemRepository lineItemRepository) {
         this.snapshotRepository = snapshotRepository;
-        this.snapshotEntryRepository = snapshotEntryRepository;
-        this.itemRepository = itemRepository;
+        this.lineItemRepository = lineItemRepository;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +46,11 @@ public class SnapshotService {
     }
 
     @Transactional(readOnly = true)
+    public List<String> listDescriptions() {
+        return lineItemRepository.findDistinctDescriptions();
+    }
+
+    @Transactional(readOnly = true)
     public SnapshotDetailDto getDetail(Long id) {
         Snapshot snapshot = snapshotRepository
                 .findById(id)
@@ -62,66 +59,61 @@ public class SnapshotService {
     }
 
     @Transactional
-    public SnapshotDetailDto create(CreateSnapshotRequest request) {
-        if (snapshotRepository.existsBySnapshotDate(request.snapshotDate())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "A snapshot already exists for " + request.snapshotDate());
+    public void delete(Long id) {
+        if (!snapshotRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Snapshot not found");
         }
+        snapshotRepository.deleteById(id);
+    }
 
+    @Transactional
+    public SnapshotDetailDto create(CreateSnapshotRequest request) {
         Snapshot snapshot = new Snapshot();
         snapshot.setSnapshotDate(request.snapshotDate());
         snapshot.setNotes(request.notes());
         snapshot = snapshotRepository.save(snapshot);
 
-        for (var entryRequest : request.entries()) {
-            Item item = itemRepository
-                    .findById(entryRequest.itemId())
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST, "Item not found: " + entryRequest.itemId()));
-            SnapshotEntry entry = new SnapshotEntry();
-            entry.setSnapshot(snapshot);
-            entry.setItem(item);
-            entry.setValue(entryRequest.value());
-            snapshotEntryRepository.save(entry);
+        for (var lineItemRequest : request.lineItems()) {
+            LineItem lineItem = new LineItem();
+            lineItem.setSnapshot(snapshot);
+            lineItem.setDescription(lineItemRequest.description());
+            lineItem.setAmount(lineItemRequest.amount());
+            lineItemRepository.save(lineItem);
         }
 
         return toDetailDto(snapshot);
     }
 
     private SnapshotDetailDto toDetailDto(Snapshot snapshot) {
-        List<SnapshotEntry> entries = snapshotEntryRepository.findBySnapshotId(snapshot.getId());
+        List<LineItem> lineItems = lineItemRepository.findBySnapshotId(snapshot.getId());
 
         Snapshot previousSnapshot =
                 snapshotRepository
                         .findFirstBySnapshotDateLessThanOrderBySnapshotDateDesc(snapshot.getSnapshotDate())
                         .orElse(null);
-        Map<Long, BigDecimal> previousValuesByItemId = previousSnapshot == null
+        Map<String, BigDecimal> previousAmountsByDescription = previousSnapshot == null
                 ? Map.of()
-                : snapshotEntryRepository.findBySnapshotId(previousSnapshot.getId()).stream()
+                : lineItemRepository.findBySnapshotId(previousSnapshot.getId()).stream()
                         .collect(java.util.stream.Collectors.toMap(
-                                e -> e.getItem().getId(), SnapshotEntry::getValue));
+                                LineItem::getDescription, LineItem::getAmount, (a, b) -> a));
 
-        List<SnapshotEntryDetailDto> entryDtos = entries.stream()
-                .sorted(Comparator.comparing(e -> e.getItem().getName()))
-                .map(e -> {
-                    Item item = e.getItem();
-                    BigDecimal previousValue = previousValuesByItemId.get(item.getId());
-                    return new SnapshotEntryDetailDto(
-                            item.getId(),
-                            item.getName(),
-                            item.getCategory().getName(),
-                            item.getCategory().getType(),
-                            e.getValue(),
-                            previousValue,
-                            change(e.getValue(), previousValue),
-                            percentChange(e.getValue(), previousValue));
+        List<LineItemDetailDto> lineItemDtos = lineItems.stream()
+                .sorted(Comparator.comparing(LineItem::getDescription))
+                .map(li -> {
+                    BigDecimal previousAmount = previousAmountsByDescription.get(li.getDescription());
+                    return new LineItemDetailDto(
+                            li.getDescription(),
+                            li.getAmount(),
+                            previousAmount,
+                            change(li.getAmount(), previousAmount),
+                            percentChange(li.getAmount(), previousAmount));
                 })
                 .toList();
 
-        BigDecimal netWorth = sumNetWorth(entries);
+        BigDecimal netWorth = sumNetWorth(lineItems);
         BigDecimal previousNetWorth = previousSnapshot == null
                 ? null
-                : sumNetWorth(snapshotEntryRepository.findBySnapshotId(previousSnapshot.getId()));
+                : sumNetWorth(lineItemRepository.findBySnapshotId(previousSnapshot.getId()));
 
         return new SnapshotDetailDto(
                 snapshot.getId(),
@@ -131,20 +123,17 @@ public class SnapshotService {
                 previousNetWorth,
                 change(netWorth, previousNetWorth),
                 percentChange(netWorth, previousNetWorth),
-                entryDtos);
+                lineItemDtos);
     }
 
     private BigDecimal netWorthOf(Long snapshotId) {
-        return sumNetWorth(snapshotEntryRepository.findBySnapshotId(snapshotId));
+        return sumNetWorth(lineItemRepository.findBySnapshotId(snapshotId));
     }
 
-    private BigDecimal sumNetWorth(List<SnapshotEntry> entries) {
+    private BigDecimal sumNetWorth(List<LineItem> lineItems) {
         BigDecimal total = BigDecimal.ZERO;
-        for (SnapshotEntry entry : entries) {
-            BigDecimal signedValue = entry.getItem().getCategory().getType() == CategoryType.LIABILITY
-                    ? entry.getValue().negate()
-                    : entry.getValue();
-            total = total.add(signedValue);
+        for (LineItem lineItem : lineItems) {
+            total = total.add(lineItem.getAmount());
         }
         return total;
     }

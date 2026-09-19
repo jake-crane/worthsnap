@@ -1,18 +1,9 @@
-export type CategoryType = 'ASSET' | 'LIABILITY'
-
-export interface Category {
-  id: number
-  name: string
-  type: CategoryType
-}
-
-export interface Item {
-  id: number
-  name: string
-  categoryId: number
-  categoryName: string
-  type: CategoryType
-  archived: boolean
+export interface LineItem {
+  description: string
+  amount: number
+  previousAmount: number | null
+  change: number | null
+  percentChange: number | null
 }
 
 export interface SnapshotSummary {
@@ -20,17 +11,6 @@ export interface SnapshotSummary {
   snapshotDate: string
   notes: string | null
   netWorth: number
-}
-
-export interface SnapshotEntryDetail {
-  itemId: number
-  itemName: string
-  categoryName: string
-  type: CategoryType
-  value: number
-  previousValue: number | null
-  change: number | null
-  percentChange: number | null
 }
 
 export interface SnapshotDetail {
@@ -41,7 +21,7 @@ export interface SnapshotDetail {
   previousNetWorth: number | null
   netWorthChange: number | null
   netWorthPercentChange: number | null
-  entries: SnapshotEntryDetail[]
+  lineItems: LineItem[]
 }
 
 export interface NetWorthPoint {
