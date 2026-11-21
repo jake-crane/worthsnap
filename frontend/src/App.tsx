@@ -80,31 +80,42 @@ export default function App() {
     <div className="min-h-screen bg-slate-50">
       <OfflineBanner />
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+        <div className="mx-auto grid max-w-5xl grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex sm:justify-between">
           <span className="text-lg font-semibold text-slate-900">WorthSnap</span>
-          <nav className="flex items-center gap-1">
+          <nav className="col-span-2 row-start-2 flex items-center gap-1 sm:ml-auto">
             <NavLink to="/" end className={navLinkClass}>
               Dashboard
             </NavLink>
             <NavLink to="/snapshots" className={navLinkClass}>
               Snapshots
             </NavLink>
-            <div className="ml-3 flex items-center gap-2 border-l border-slate-200 pl-3">
-              {user.avatarUrl && (
-                <img src={user.avatarUrl} alt="" className="h-6 w-6 rounded-full" />
-              )}
-              <span className="text-sm text-slate-500">{user.name ?? user.email}</span>
-              <button
-                type="button"
-                onClick={() => logout()}
-                disabled={offline}
-                title={offline ? 'Connect to the internet to sign out' : undefined}
-                className="text-sm font-medium text-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Sign out
-              </button>
-            </div>
           </nav>
+          <div className="flex min-w-0 items-center gap-2 sm:border-l sm:border-slate-200 sm:pl-3">
+            {user.avatarUrl && (
+              <img
+                src={user.avatarUrl}
+                alt={user.name ?? user.email ?? ""}
+                title={user.name ?? user.email ?? undefined}
+                className="h-7 w-7 shrink-0 rounded-full sm:h-6 sm:w-6"
+              />
+            )}
+            <span
+              className={`truncate text-sm whitespace-nowrap text-slate-500 ${
+                user.avatarUrl ? 'hidden sm:inline' : 'max-w-[10rem]'
+              }`}
+            >
+              {user.name ?? user.email}
+            </span>
+            <button
+              type="button"
+              onClick={() => logout()}
+              disabled={offline}
+              title={offline ? 'Connect to the internet to sign out' : undefined}
+              className="shrink-0 text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
