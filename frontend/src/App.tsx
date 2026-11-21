@@ -6,6 +6,8 @@ import NewSnapshot from './pages/NewSnapshot'
 import SnapshotDetail from './pages/SnapshotDetail'
 import Login from './pages/Login'
 import { fetchCurrentUser, logout, type CurrentUser } from './lib/auth'
+import { OfflineError, useConnection } from './lib/offline'
+import { formatDateTime } from './lib/format'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -14,17 +16,60 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
   }`
 
-export default function App() {
-  const [user, setUser] = useState<CurrentUser | null | 'loading'>('loading')
+function OfflineBanner() {
+  const { offline, savedAt } = useConnection()
+  if (!offline) return null
+  return (
+    <div
+      role="status"
+      className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900"
+    >
+      <span className="font-medium">You're offline.</span>{' '}
+      {savedAt ? `Showing data saved ${formatDateTime(savedAt)}.` : 'Showing data saved on this device.'}{' '}
+      Changes need a connection.
+    </div>
+  )
+}
 
-  useEffect(() => {
+function OfflineScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-8 text-center">
+        <h1 className="text-xl font-semibold text-slate-900">You're offline</h1>
+        <p className="text-sm text-slate-500">
+          Connect to the internet and sign in once. After that, WorthSnap opens without a
+          connection.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function App() {
+  const [user, setUser] = useState<CurrentUser | null | 'loading' | 'offline'>('loading')
+  const { offline } = useConnection()
+
+  function loadUser() {
     fetchCurrentUser()
       .then(setUser)
-      .catch(() => setUser(null))
-  }, [])
+      .catch((e) => setUser(e instanceof OfflineError ? 'offline' : null))
+  }
+
+  useEffect(loadUser, [])
 
   if (user === 'loading') {
     return <div className="p-8 text-center text-slate-500">Loading…</div>
+  }
+
+  if (user === 'offline') {
+    return <OfflineScreen onRetry={loadUser} />
   }
 
   if (user === null) {
@@ -33,6 +78,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <OfflineBanner />
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <span className="text-lg font-semibold text-slate-900">WorthSnap</span>
@@ -51,7 +97,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => logout()}
-                className="text-sm font-medium text-slate-400 hover:text-slate-900"
+                disabled={offline}
+                title={offline ? 'Connect to the internet to sign out' : undefined}
+                className="text-sm font-medium text-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Sign out
               </button>

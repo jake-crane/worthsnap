@@ -1,3 +1,5 @@
+import { apiFetch } from '../lib/offline'
+
 const BASE_URL = '/api'
 
 function getCookie(name: string): string | null {
@@ -13,7 +15,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (csrfToken) headers['X-XSRF-TOKEN'] = csrfToken
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { headers, ...options })
+  const res = await apiFetch(`${BASE_URL}${path}`, { headers, ...options })
   if (res.status === 401) {
     window.location.href = '/'
     throw new Error('Not authenticated')

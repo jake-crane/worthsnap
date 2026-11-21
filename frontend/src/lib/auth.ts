@@ -1,3 +1,5 @@
+import { apiFetch, clearOfflineData } from './offline'
+
 export interface CurrentUser {
   id: number
   name: string | null
@@ -15,13 +17,15 @@ function getCookie(name: string): string | null {
  * here just means "not logged in yet" rather than a session that expired mid-use.
  */
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
-  const res = await fetch('/api/me')
+  const res = await apiFetch('/api/me')
   if (res.status === 401) return null
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json()
 }
 
 export async function logout(): Promise<void> {
+  // Saved copies of this account's data shouldn't outlive the session.
+  await clearOfflineData()
   const csrfToken = getCookie('XSRF-TOKEN')
   await fetch('/logout', {
     method: 'POST',

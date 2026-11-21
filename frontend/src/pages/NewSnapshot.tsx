@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import DescriptionCombobox from '../components/DescriptionCombobox'
+import { useConnection } from '../lib/offline'
 import type { SnapshotDetail, SnapshotSummary } from '../types'
 
 interface Row {
@@ -15,6 +16,60 @@ function newRow(description = ''): Row {
   return { key: nextKey++, description, amount: '' }
 }
 
+// The form is kept on this device as you type, so nothing is lost if the
+// app closes, or if you're offline and can't save yet. Cleared on save and
+// on sign-out.
+const DRAFT_KEY = 'worthsnap:new-snapshot-draft'
+
+interface Draft {
+  rows: { description: string; amount: string }[]
+  snapshotDate: string
+  notes: string
+}
+
+function loadDraft(): Draft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as Draft) : null
+  } catch {
+    return null
+  }
+}
+
+function saveDraft(draft: Draft | null) {
+  try {
+    if (draft) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    else localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // Storage unavailable: the form still works, just isn't kept.
+  }
+}
+
+function rowsFromDraft(draft: Draft): Row[] {
+  return draft.rows.length > 0
+    ? draft.rows.map((r) => ({ ...newRow(r.description), amount: r.amount }))
+    : [newRow()]
+}
+
+/** Autocomplete options, plus rows pre-filled from the latest snapshot. */
+async function fetchPrefill(): Promise<{ descriptions: string[]; rows: Row[] }> {
+  const [summaries, descriptions] = await Promise.all([
+    api.get<SnapshotSummary[]>('/snapshots'),
+    api.get<string[]>('/descriptions'),
+  ])
+  if (summaries.length === 0) return { descriptions, rows: [newRow()] }
+
+  const latest = summaries.reduce((a, b) => (a.snapshotDate > b.snapshotDate ? a : b))
+  const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
+  return {
+    descriptions,
+    rows:
+      detail.lineItems.length > 0
+        ? detail.lineItems.map((li) => newRow(li.description))
+        : [newRow()],
+  }
+}
+
 function toDateTimeLocalValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
@@ -22,41 +77,68 @@ function toDateTimeLocalValue(date: Date): string {
 
 export default function NewSnapshot() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState<Row[] | null>(null)
-  const [descriptions, setDescriptions] = useState<string[]>([])
-  const [snapshotDate, setSnapshotDate] = useState(() =>
-    toDateTimeLocalValue(new Date()),
+  const { offline } = useConnection()
+  const [initialDraft] = useState(loadDraft)
+  const [restoredDraft, setRestoredDraft] = useState(initialDraft !== null)
+  const [rows, setRows] = useState<Row[] | null>(() =>
+    initialDraft ? rowsFromDraft(initialDraft) : null,
   )
-  const [notes, setNotes] = useState('')
+  const [descriptions, setDescriptions] = useState<string[]>([])
+  const [snapshotDate, setSnapshotDate] = useState(
+    () => initialDraft?.snapshotDate ?? toDateTimeLocalValue(new Date()),
+  )
+  const [notes, setNotes] = useState(initialDraft?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [duplicateKeys, setDuplicateKeys] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    async function load() {
-      const [summaries, allDescriptions] = await Promise.all([
-        api.get<SnapshotSummary[]>('/snapshots'),
-        api.get<string[]>('/descriptions'),
-      ])
-      setDescriptions(allDescriptions)
-
-      if (summaries.length === 0) {
-        setRows([newRow()])
-        return
-      }
-
-      const latest = summaries.reduce((a, b) =>
-        a.snapshotDate > b.snapshotDate ? a : b,
-      )
-      const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
-      setRows(
-        detail.lineItems.length > 0
-          ? detail.lineItems.map((li) => newRow(li.description))
-          : [newRow()],
-      )
+    if (initialDraft) {
+      // Rows come from the draft; just fetch autocomplete options.
+      api
+        .get<string[]>('/descriptions')
+        .catch(() => [])
+        .then(setDescriptions)
+      return
     }
-    load().catch((e) => setError(String(e)))
-  }, [])
+    fetchPrefill()
+      .then((prefill) => {
+        setDescriptions(prefill.descriptions)
+        setRows(prefill.rows)
+      })
+      .catch((e) => setError(String(e)))
+  }, [initialDraft])
+
+  // Keep the draft once something has been typed.
+  useEffect(() => {
+    if (!rows) return
+    const typed = notes.trim() !== '' || rows.some((r) => r.amount !== '')
+    saveDraft(
+      typed
+        ? {
+            rows: rows.map(({ description, amount }) => ({ description, amount })),
+            snapshotDate,
+            notes,
+          }
+        : null,
+    )
+  }, [rows, snapshotDate, notes])
+
+  function startOver() {
+    saveDraft(null)
+    setRestoredDraft(false)
+    setSnapshotDate(toDateTimeLocalValue(new Date()))
+    setNotes('')
+    setError(null)
+    setDuplicateKeys(new Set())
+    setRows(null)
+    fetchPrefill()
+      .then((prefill) => {
+        setDescriptions(prefill.descriptions)
+        setRows(prefill.rows)
+      })
+      .catch((e) => setError(String(e)))
+  }
 
   function updateRow(key: number, field: 'description' | 'amount', value: string) {
     setRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)))
@@ -114,6 +196,7 @@ export default function NewSnapshot() {
         notes: notes.trim() || null,
         lineItems,
       })
+      saveDraft(null)
       navigate(`/snapshots/${created.id}`)
     } catch (e) {
       setError(String(e))
@@ -127,6 +210,19 @@ export default function NewSnapshot() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <h1 className="text-xl font-semibold text-slate-900">New snapshot</h1>
+
+      {restoredDraft && (
+        <p className="text-sm text-slate-500">
+          Picked up where you left off.{' '}
+          <button
+            type="button"
+            onClick={startOver}
+            className="font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
+          >
+            Start over
+          </button>
+        </p>
+      )}
 
       {error && <p className="text-red-600">{error}</p>}
 
@@ -211,13 +307,21 @@ export default function NewSnapshot() {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-      >
-        {submitting ? 'Saving…' : 'Save snapshot'}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={submitting || offline}
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? 'Saving…' : 'Save snapshot'}
+        </button>
+        {offline && (
+          <p className="text-sm text-slate-500">
+            You're offline. What you've entered is kept on this device, so you can save it
+            when you're back online.
+          </p>
+        )}
+      </div>
     </form>
   )
 }

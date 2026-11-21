@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { changeColorClass } from '../lib/colors'
+import { useConnection } from '../lib/offline'
 import { formatChange, formatCurrency, formatDateTime, formatPercent } from '../lib/format'
 import type { SnapshotDetail, SnapshotSummary } from '../types'
 
@@ -13,6 +14,7 @@ export default function Snapshots() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [details, setDetails] = useState<Record<number, SnapshotDetail>>({})
   const [loadingIds, setLoadingIds] = useState<Set<number>>(new Set())
+  const { offline } = useConnection()
 
   useEffect(() => {
     api
@@ -146,7 +148,7 @@ export default function Snapshots() {
                             <button
                               type="button"
                               onClick={() => handleDelete(s.id)}
-                              disabled={deletingId === s.id}
+                              disabled={deletingId === s.id || offline}
                               className="text-xs font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50"
                             >
                               {deletingId === s.id ? 'Deleting…' : 'Confirm'}
@@ -164,8 +166,10 @@ export default function Snapshots() {
                           <button
                             type="button"
                             onClick={() => setConfirmingId(s.id)}
+                            disabled={offline}
+                            title={offline ? 'Connect to the internet to delete' : undefined}
                             aria-label={`Delete snapshot from ${formatDateTime(s.snapshotDate)}`}
-                            className="text-xs font-medium text-slate-400 hover:text-rose-600"
+                            className="text-xs font-medium text-slate-400 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-slate-400"
                           >
                             Delete
                           </button>
