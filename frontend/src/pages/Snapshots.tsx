@@ -1,31 +1,26 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { changeColorClass } from '../lib/colors'
+import { loadThenRefresh, useApiData } from '../lib/data'
 import { useConnection } from '../lib/offline'
 import { formatChange, formatCurrency, formatDateTime, formatPercent } from '../lib/format'
 import type { SnapshotDetail, SnapshotSummary } from '../types'
 
 export default function Snapshots() {
-  const [snapshots, setSnapshots] = useState<SnapshotSummary[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error: loadError, update } = useApiData<SnapshotSummary[]>('/snapshots')
+  const snapshots = useMemo(
+    () => data && [...data].sort((a, b) => b.snapshotDate.localeCompare(a.snapshotDate)),
+    [data],
+  )
+  const [actionError, setActionError] = useState<string | null>(null)
+  const error = loadError ?? actionError
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [details, setDetails] = useState<Record<number, SnapshotDetail>>({})
   const [loadingIds, setLoadingIds] = useState<Set<number>>(new Set())
   const { offline } = useConnection()
-
-  useEffect(() => {
-    api
-      .get<SnapshotSummary[]>('/snapshots')
-      .then((data) =>
-        setSnapshots(
-          [...data].sort((a, b) => b.snapshotDate.localeCompare(a.snapshotDate)),
-        ),
-      )
-      .catch((e) => setError(String(e)))
-  }, [])
 
   async function toggleExpand(id: number) {
     const wasExpanded = expandedIds.has(id)
@@ -38,11 +33,20 @@ export default function Snapshots() {
     if (wasExpanded || details[id]) return
 
     setLoadingIds((prev) => new Set(prev).add(id))
+    let shown = false
     try {
-      const detail = await api.get<SnapshotDetail>(`/snapshots/${id}`)
-      setDetails((prev) => ({ ...prev, [id]: detail }))
+      await loadThenRefresh<SnapshotDetail>(`/snapshots/${id}`, (detail) => {
+        shown = true
+        setDetails((prev) => ({ ...prev, [id]: detail }))
+        setLoadingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      })
     } catch (e) {
-      setError(String(e))
+      // Fine if a saved copy is already showing.
+      if (!shown) setActionError(String(e))
     } finally {
       setLoadingIds((prev) => {
         const next = new Set(prev)
@@ -57,7 +61,7 @@ export default function Snapshots() {
     setDeletingId(id)
     try {
       await api.delete(`/snapshots/${id}`)
-      setSnapshots((prev) => prev && prev.filter((s) => s.id !== id))
+      update((prev) => prev.filter((s) => s.id !== id))
       setExpandedIds((prev) => {
         if (!prev.has(id)) return prev
         const next = new Set(prev)
@@ -65,7 +69,7 @@ export default function Snapshots() {
         return next
       })
     } catch (e) {
-      setError(String(e))
+      setActionError(String(e))
     } finally {
       setDeletingId(null)
     }
@@ -84,7 +88,7 @@ export default function Snapshots() {
       </div>
 
       {error && <p className="text-red-600">Failed to load: {error}</p>}
-      {!snapshots && !error && <p className="text-slate-500">Loading…</p>}
+      {!snapshots && !error && <p className="animate-[appear_200ms_ease-out_500ms_both] text-slate-500">Loading…</p>}
 
       {snapshots && snapshots.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">

@@ -6,7 +6,7 @@ import NewSnapshot from './pages/NewSnapshot'
 import SnapshotDetail from './pages/SnapshotDetail'
 import Login from './pages/Login'
 import { fetchCurrentUser, logout, type CurrentUser } from './lib/auth'
-import { OfflineError, useConnection } from './lib/offline'
+import { beginRefresh, OfflineError, readSaved, useConnection } from './lib/offline'
 import { formatDateTime } from './lib/format'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -28,6 +28,22 @@ function OfflineBanner() {
       {savedAt ? `Showing data saved ${formatDateTime(savedAt)}.` : 'Showing data saved on this device.'}{' '}
       Changes need a connection.
     </div>
+  )
+}
+
+/** Shown while saved data is on screen and fresh data is on its way. */
+function RefreshingNote() {
+  const { refreshing, offline } = useConnection()
+  if (!refreshing || offline) return null
+  return (
+    // Fades in after a second, so quick refreshes don't flash it.
+    <span
+      role="status"
+      className="flex animate-[appear_200ms_ease-out_1s_both] items-center gap-1.5 text-xs font-normal text-slate-400"
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+      Updating…
+    </span>
   )
 }
 
@@ -57,15 +73,37 @@ export default function App() {
   const { offline } = useConnection()
 
   function loadUser() {
+    // Open with the account saved on this device rather than waiting for the
+    // server, which can be slow to wake up. The server's answer replaces it,
+    // or sends you to sign in if the session has ended.
+    let answered = false
+    readSaved<CurrentUser>('/api/me').then((saved) => {
+      if (saved && !answered) setUser((u) => (u === 'loading' || u === 'offline' ? saved : u))
+    })
+    const endRefresh = beginRefresh()
     fetchCurrentUser()
-      .then(setUser)
-      .catch((e) => setUser(e instanceof OfflineError ? 'offline' : null))
+      .then((fresh) => {
+        answered = true
+        setUser(fresh)
+      })
+      .catch((e) =>
+        setUser((u) =>
+          typeof u === 'object' && u !== null ? u : e instanceof OfflineError ? 'offline' : null,
+        ),
+      )
+      .finally(endRefresh)
   }
 
   useEffect(loadUser, [])
 
   if (user === 'loading') {
-    return <div className="p-8 text-center text-slate-500">Loading…</div>
+    // Normally replaced by the saved account within milliseconds. Only seen
+    // on a first visit, before anything is saved on the device.
+    return (
+      <div className="animate-[appear_200ms_ease-out_500ms_both] p-8 text-center text-slate-500">
+        Loading…
+      </div>
+    )
   }
 
   if (user === 'offline') {
@@ -81,7 +119,10 @@ export default function App() {
       <OfflineBanner />
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto grid max-w-5xl grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex sm:justify-between">
-          <span className="text-lg font-semibold text-slate-900">WorthSnap</span>
+          <span className="flex items-center gap-3 text-lg font-semibold text-slate-900">
+            WorthSnap
+            <RefreshingNote />
+          </span>
           <nav className="col-span-2 row-start-2 flex items-center gap-1 sm:ml-auto">
             <NavLink to="/" end className={navLinkClass}>
               Dashboard

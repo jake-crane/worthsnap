@@ -6,14 +6,19 @@
 //   page load. Offline, every page load gets the saved shell.
 // - GET /api/* responses are your data. They go to the network first and a
 //   copy of each good response is saved. With no network (or none within
-//   NETWORK_TIMEOUT_MS when a copy exists), the saved copy is returned with
-//   an X-WorthSnap-Offline header so the app can say it's showing saved data.
+//   API_TIMEOUT_MS when a copy exists), the saved copy is returned with an
+//   X-WorthSnap-Offline header so the app can say it's showing saved data.
+//   The app reads saved copies itself to show them right away (see
+//   src/lib/data.ts), so a slow server isn't treated as being offline: the
+//   timeout is only there for connections that hang.
 // - Sign-in, sign-out and anything that isn't a GET are left alone.
 
 const SHELL_CACHE = "worthsnap-shell";
 const API_CACHE = "worthsnap-api"; // also in src/lib/offline.ts
 const SHELL_KEY = "/index.html";
-const NETWORK_TIMEOUT_MS = 4000;
+const SHELL_TIMEOUT_MS = 4000;
+// Long enough for the server to wake up from a cold start.
+const API_TIMEOUT_MS = 30000;
 const MAX_ASSETS = 150;
 
 const SAVED_AT_HEADER = "X-WorthSnap-Saved-At";
@@ -62,8 +67,11 @@ async function shellNetworkFirst(event) {
     .open(SHELL_CACHE)
     .then((cache) => cache.match(SHELL_KEY, { ignoreVary: true }));
 
-  const response = await networkOrTimeout(event, fetch(event.request), Boolean(saved), (res) =>
-    isShell(res) ? saveShell(res) : undefined,
+  const response = await networkOrTimeout(
+    event,
+    fetch(event.request),
+    saved ? SHELL_TIMEOUT_MS : undefined,
+    (res) => (isShell(res) ? saveShell(res) : undefined),
   );
   if (response) return response;
 
@@ -135,8 +143,11 @@ async function apiNetworkFirst(event) {
   const cache = await caches.open(API_CACHE);
   const saved = await cache.match(request, { ignoreVary: true });
 
-  const response = await networkOrTimeout(event, fetch(request), Boolean(saved), (res) =>
-    saveApiResponse(cache, request, res),
+  const response = await networkOrTimeout(
+    event,
+    fetch(request),
+    saved ? API_TIMEOUT_MS : undefined,
+    (res) => saveApiResponse(cache, request, res),
   );
   if (response) return response;
 
@@ -169,16 +180,16 @@ async function saveApiResponse(cache, request, response) {
 
 /**
  * Resolves with the network response, or undefined if the network failed,
- * or if it took longer than NETWORK_TIMEOUT_MS while a saved copy exists.
- * Either way, a network response that arrives is handed to `save`.
+ * or took longer than `timeoutMs` (pass undefined to wait as long as it
+ * takes). Either way, a network response that arrives is handed to `save`.
  */
-async function networkOrTimeout(event, network, hasSaved, save) {
+async function networkOrTimeout(event, network, timeoutMs, save) {
   const saving = network.then((res) => save(res.clone())).catch(() => {});
   event.waitUntil(saving);
   try {
-    return hasSaved
-      ? await Promise.race([network, timeout(NETWORK_TIMEOUT_MS)])
-      : await network;
+    return timeoutMs === undefined
+      ? await network
+      : await Promise.race([network, timeout(timeoutMs)]);
   } catch {
     return undefined;
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import DescriptionCombobox from '../components/DescriptionCombobox'
-import { useConnection } from '../lib/offline'
+import { readSaved, useConnection } from '../lib/offline'
 import type { SnapshotDetail, SnapshotSummary } from '../types'
 
 interface Row {
@@ -51,16 +51,25 @@ function rowsFromDraft(draft: Draft): Row[] {
     : [newRow()]
 }
 
+type Get = <T>(path: string) => Promise<T>
+
+/** Reads the copy saved on this device; rejects if there isn't one. */
+const getSaved: Get = async <T,>(path: string) => {
+  const saved = await readSaved<T>(`/api${path}`)
+  if (saved === null) throw new Error(`${path} isn't saved on this device`)
+  return saved
+}
+
 /** Autocomplete options, plus rows pre-filled from the latest snapshot. */
-async function fetchPrefill(): Promise<{ descriptions: string[]; rows: Row[] }> {
+async function fetchPrefill(get: Get = api.get): Promise<{ descriptions: string[]; rows: Row[] }> {
   const [summaries, descriptions] = await Promise.all([
-    api.get<SnapshotSummary[]>('/snapshots'),
-    api.get<string[]>('/descriptions'),
+    get<SnapshotSummary[]>('/snapshots'),
+    get<string[]>('/descriptions'),
   ])
   if (summaries.length === 0) return { descriptions, rows: [newRow()] }
 
   const latest = summaries.reduce((a, b) => (a.snapshotDate > b.snapshotDate ? a : b))
-  const detail = await api.get<SnapshotDetail>(`/snapshots/${latest.id}`)
+  const detail = await get<SnapshotDetail>(`/snapshots/${latest.id}`)
   return {
     descriptions,
     rows:
@@ -93,20 +102,42 @@ export default function NewSnapshot() {
   const [duplicateKeys, setDuplicateKeys] = useState<Set<number>>(new Set())
 
   useEffect(() => {
+    // Fill in from the saved copy right away, then from the server. Rows are
+    // only filled once, so a slow server can't overwrite what's been typed.
+    let fresh = false
     if (initialDraft) {
       // Rows come from the draft; just fetch autocomplete options.
+      getSaved<string[]>('/descriptions')
+        .then((saved) => !fresh && setDescriptions(saved))
+        .catch(() => {})
       api
         .get<string[]>('/descriptions')
-        .catch(() => [])
-        .then(setDescriptions)
+        .then((d) => {
+          fresh = true
+          setDescriptions(d)
+        })
+        .catch(() => {})
       return
     }
+    let filled = false
+    fetchPrefill(getSaved)
+      .then((prefill) => {
+        if (fresh) return
+        filled = true
+        setDescriptions(prefill.descriptions)
+        setRows((prev) => prev ?? prefill.rows)
+      })
+      .catch(() => {})
     fetchPrefill()
       .then((prefill) => {
+        fresh = true
         setDescriptions(prefill.descriptions)
-        setRows(prefill.rows)
+        setRows((prev) => prev ?? prefill.rows)
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => {
+        // Fine if the saved copy filled the form.
+        if (!filled) setError(String(e))
+      })
   }, [initialDraft])
 
   // Keep the draft once something has been typed.
@@ -205,7 +236,7 @@ export default function NewSnapshot() {
   }
 
   if (!rows && error) return <p className="text-red-600">{error}</p>
-  if (!rows) return <p className="text-slate-500">Loading…</p>
+  if (!rows) return <p className="animate-[appear_200ms_ease-out_500ms_both] text-slate-500">Loading…</p>
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

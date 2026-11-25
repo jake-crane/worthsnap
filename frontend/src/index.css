@@ -10,3 +10,12 @@ input[type='number']::-webkit-outer-spin-button {
 input[type='number'] {
   appearance: textfield;
 }
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

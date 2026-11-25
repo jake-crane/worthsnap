@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { useApiData } from '../lib/data'
 import { changeColorClass } from '../lib/colors'
 import { formatChange, formatCurrency, formatDateTime, formatPercent } from '../lib/format'
 import type { SnapshotDetail as SnapshotDetailType } from '../types'
@@ -24,18 +23,10 @@ function LineItemRow({ item }: { item: SnapshotDetailType['lineItems'][number] }
 
 export default function SnapshotDetail() {
   const { id } = useParams()
-  const [snapshot, setSnapshot] = useState<SnapshotDetailType | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api
-      .get<SnapshotDetailType>(`/snapshots/${id}`)
-      .then(setSnapshot)
-      .catch((e) => setError(String(e)))
-  }, [id])
+  const { data: snapshot, error } = useApiData<SnapshotDetailType>(`/snapshots/${id}`)
 
   if (error) return <p className="text-red-600">Failed to load: {error}</p>
-  if (!snapshot) return <p className="text-slate-500">Loading…</p>
+  if (!snapshot) return <p className="animate-[appear_200ms_ease-out_500ms_both] text-slate-500">Loading…</p>
 
   return (
     <div className="space-y-6">

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   CartesianGrid,
@@ -9,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api } from '../api/client'
+import { useApiData } from '../lib/data'
 import { formatCurrency, formatDate, formatDateTime } from '../lib/format'
 import type { NetWorthPoint } from '../types'
 
@@ -33,22 +32,14 @@ function CustomTooltip({
 }
 
 export default function Dashboard() {
-  const [history, setHistory] = useState<NetWorthPoint[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api
-      .get<NetWorthPoint[]>('/net-worth-history')
-      .then(setHistory)
-      .catch((e) => setError(String(e)))
-  }, [])
+  const { data: history, error } = useApiData<NetWorthPoint[]>('/net-worth-history')
 
   if (error) {
     return <p className="text-red-600">Failed to load: {error}</p>
   }
 
   if (!history) {
-    return <p className="text-slate-500">Loading…</p>
+    return <p className="animate-[appear_200ms_ease-out_500ms_both] text-slate-500">Loading…</p>
   }
 
   if (history.length === 0) {
