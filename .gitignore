@@ -18,3 +18,6 @@ backend/.mvn/wrapper/maven-wrapper.jar
 .env
 .env.local
 backend/secrets.properties
+
+# Claude app dev-server config (local only)
+.claude/launch.json
