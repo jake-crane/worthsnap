@@ -264,7 +264,7 @@ export default function NewSnapshot() {
             type="datetime-local"
             value={snapshotDate}
             onChange={(e) => setSnapshotDate(e.target.value)}
-            className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm"
             required
           />
         </div>
@@ -275,7 +275,7 @@ export default function NewSnapshot() {
           <input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm"
           />
         </div>
       </div>
@@ -313,7 +313,7 @@ export default function NewSnapshot() {
                 value={row.amount}
                 onChange={(e) => updateRow(row.key, 'amount', e.target.value)}
                 placeholder="0.00"
-                className="w-36 rounded-md border border-slate-300 px-3 py-2 text-right text-sm"
+                className="w-36 rounded-md border border-slate-300 px-3 py-2 text-right text-base sm:text-sm"
               />
               <button
                 type="button"

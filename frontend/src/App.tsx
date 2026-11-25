@@ -9,11 +9,10 @@ import { fetchCurrentUser, logout, type CurrentUser } from './lib/auth'
 import { beginRefresh, OfflineError, readSaved, useConnection } from './lib/offline'
 import { formatDateTime } from './lib/format'
 
+// Links are 44px tall on phones, the minimum comfortable tap target.
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-    isActive
-      ? 'bg-slate-900 text-white'
-      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  `inline-flex min-h-11 items-center px-3 rounded-md text-sm font-medium transition-colors sm:min-h-9 ${
+    isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
   }`
 
 function OfflineBanner() {
@@ -25,7 +24,9 @@ function OfflineBanner() {
       className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900"
     >
       <span className="font-medium">You're offline.</span>{' '}
-      {savedAt ? `Showing data saved ${formatDateTime(savedAt)}.` : 'Showing data saved on this device.'}{' '}
+      {savedAt
+        ? `Showing data saved ${formatDateTime(savedAt)}.`
+        : 'Showing data saved on this device.'}{' '}
       Changes need a connection.
     </div>
   )
@@ -116,49 +117,54 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <OfflineBanner />
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-5xl grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex sm:justify-between">
-          <span className="flex items-center gap-3 text-lg font-semibold text-slate-900">
-            WorthSnap
-            <RefreshingNote />
-          </span>
-          <nav className="col-span-2 row-start-2 flex items-center gap-1 sm:ml-auto">
-            <NavLink to="/" end className={navLinkClass}>
-              Dashboard
-            </NavLink>
-            <NavLink to="/snapshots" className={navLinkClass}>
-              Snapshots
-            </NavLink>
-          </nav>
-          <div className="flex min-w-0 items-center gap-2 sm:border-l sm:border-slate-200 sm:pl-3">
-            {user.avatarUrl && (
-              <img
-                src={user.avatarUrl}
-                alt={user.name ?? user.email ?? ""}
-                title={user.name ?? user.email ?? undefined}
-                className="h-7 w-7 shrink-0 rounded-full sm:h-6 sm:w-6"
-              />
-            )}
-            <span
-              className={`truncate text-sm whitespace-nowrap text-slate-500 ${
-                user.avatarUrl ? 'hidden sm:inline' : 'max-w-[10rem]'
-              }`}
-            >
-              {user.name ?? user.email}
+      {/* Sticky and solid white on purpose: iOS 26 colors the status bar
+          from a fixed or sticky element at the top of the page. Without one,
+          it lays frosted glass over whatever is scrolled up there. */}
+      <div className="sticky top-0 z-30">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto grid max-w-5xl grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex sm:justify-between">
+            <span className="flex items-center gap-3 text-lg font-semibold text-slate-900">
+              WorthSnap
+              <RefreshingNote />
             </span>
-            <button
-              type="button"
-              onClick={() => logout()}
-              disabled={offline}
-              title={offline ? 'Connect to the internet to sign out' : undefined}
-              className="shrink-0 text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Sign out
-            </button>
+            <nav className="col-span-2 row-start-2 flex items-center gap-1 sm:ml-auto">
+              <NavLink to="/" end className={navLinkClass}>
+                Dashboard
+              </NavLink>
+              <NavLink to="/snapshots" className={navLinkClass}>
+                Snapshots
+              </NavLink>
+            </nav>
+            <div className="flex min-w-0 items-center gap-2 sm:border-l sm:border-slate-200 sm:pl-3">
+              {user.avatarUrl && (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name ?? user.email ?? ''}
+                  title={user.name ?? user.email ?? undefined}
+                  className="h-7 w-7 shrink-0 rounded-full sm:h-6 sm:w-6"
+                />
+              )}
+              <span
+                className={`truncate text-sm whitespace-nowrap text-slate-500 ${
+                  user.avatarUrl ? 'hidden sm:inline' : 'max-w-[10rem]'
+                }`}
+              >
+                {user.name ?? user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => logout()}
+                disabled={offline}
+                title={offline ? 'Connect to the internet to sign out' : undefined}
+                className="-mr-2 min-h-11 shrink-0 px-2 text-sm font-medium whitespace-nowrap text-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+        <OfflineBanner />
+      </div>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
         <Routes>

@@ -76,7 +76,7 @@ export default function DescriptionCombobox({
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className={`w-full rounded-md border px-3 py-2 text-sm ${
+        className={`w-full rounded-md border px-3 py-2 text-base sm:text-sm ${
           error
             ? 'border-rose-400 bg-rose-50 focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500'
             : 'border-slate-300'
