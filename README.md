@@ -70,6 +70,9 @@ A service worker (`frontend/public/sw.js`) keeps the app usable offline:
   what you've typed on the device, so you can save it once you're back online.
 - Signing out removes the saved data from the device.
 
+The full requirements and how it works are in
+[docs/offline.md](docs/offline.md).
+
 The service worker only registers in production builds. To try it locally,
 run `npm run build` and `npm run preview -- --port 5173` in `frontend/`
 (port 5173 so sign-in redirects still match). In development, the app removes
