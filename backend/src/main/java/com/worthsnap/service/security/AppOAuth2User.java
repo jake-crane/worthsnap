@@ -1,11 +1,15 @@
 package com.worthsnap.service.security;
 
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.Map;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
-public class AppOAuth2User implements OAuth2User, AppPrincipal {
+public class AppOAuth2User implements Serializable, OAuth2User, AppPrincipal {
+
+    // Stored in the session table, so it must be serializable (delegates are).
+    private static final long serialVersionUID = 1L;
 
     private final OAuth2User delegate;
     private final Long userId;

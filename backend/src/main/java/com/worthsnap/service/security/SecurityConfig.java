@@ -46,7 +46,7 @@ public class SecurityConfig {
                         .defaultSuccessUrl(appBaseUrl + "/", true))
                 .logout(logout -> logout.logoutUrl("/logout")
                         .logoutSuccessUrl(appBaseUrl + "/")
-                        .deleteCookies("JSESSIONID"));
+                        .deleteCookies("SESSION"));
         return http.build();
     }
 }

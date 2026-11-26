@@ -1,5 +1,6 @@
 package com.worthsnap.service.security;
 
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.Map;
 import org.springframework.security.core.GrantedAuthority;
@@ -7,7 +8,10 @@ import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
-public class AppOidcUser implements OidcUser, AppPrincipal {
+public class AppOidcUser implements Serializable, OidcUser, AppPrincipal {
+
+    // Stored in the session table, so it must be serializable (delegates are).
+    private static final long serialVersionUID = 1L;
 
     private final OidcUser delegate;
     private final Long userId;
